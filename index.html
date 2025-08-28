@@ -178,15 +178,38 @@
                     const reader = new FileReader();
                     reader.onload = function(e) {
                         placeholder.style.display = 'none';
-                        pasteArea.innerHTML = `<img src="${e.target.result}" class="max-w-full max-h-full object-contain rounded-lg" alt="Pasted problem">`;
-                        const base64Data = e.target.result.split(',')[1];
-                        showLoadingState();
-                        callGeminiAPI(base64Data);
+                        pasteArea.innerHTML = `<img src="${e.target.result}" class="max-w-full max-h-full object-contain rounded-lg" alt="Pasted problem">`;                        
+                        resizeImage(e.target.result, (resizedBase64) => {
+                            const base64Data = resizedBase64.split(',')[1];
+                            showLoadingState();
+                            callGeminiAPI(base64Data);
+                        });
                     };
                     reader.readAsDataURL(imageFile);
                 } else {
                     resultArea.innerHTML = `<p class="text-red-500 p-4 bg-red-50 rounded-lg">붙여넣은 데이터가 이미지가 아닙니다. 이미지 파일을 붙여넣어 주세요.</p>`;
                 }
+            }
+
+            function resizeImage(base64Str, callback) {
+                const MAX_DIMENSION = 1024; // 이미지의 최대 가로/세로 크기
+                const img = new Image();
+                img.src = base64Str;
+                img.onload = () => {
+                    let { width, height } = img;
+                    if (Math.max(width, height) > MAX_DIMENSION) {
+                        const ratio = width > height ? MAX_DIMENSION / width : MAX_DIMENSION / height;
+                        width *= ratio;
+                        height *= ratio;
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    // PNG보다 용량이 작은 JPEG로 변환하여 전송 속도 향상
+                    callback(canvas.toDataURL('image/jpeg', 0.9));
+                };
             }
 
             function showLoadingState() {
@@ -235,15 +258,15 @@
                         for (const part of parts) {
                             if (part.trim() === '') continue;
                             try {
-                                // Gemini API는 JSON 배열을 스트리밍함
+                                // 스트림은 JSON 객체를 반환 (배열이 아님)
                                 const parsed = JSON.parse(part);
-                                const textPart = parsed[0]?.candidates?.[0]?.content?.parts?.[0]?.text;
+                                const textPart = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
                                 if (textPart) {
                                     fullText += textPart;
                                     contentArea.innerHTML = marked.parse(fullText);
                                 }
                             } catch (e) {
-                                console.warn("스트림 파싱 중 오류 (무시될 수 있음):", e);
+                                console.warn("스트림 파싱 중 오류 (무시될 수 있음):", part, e);
                             }
                         }
                     }
