@@ -26,7 +26,7 @@ exports.handler = async function (event) {
             contents: [{
                 parts: [
                     { text: systemPrompt },
-                    { inline_data: { mime_type: "image/jpeg", data: base64ImageData } }
+                    { inlineData: { mime_type: "image/jpeg", data: base64ImageData } }
                 ]
             }]
         };
@@ -46,13 +46,11 @@ exports.handler = async function (event) {
             };
         }
         
-        // Netlify Functions는 Response 객체를 반환하여 스트리밍을 지원합니다.
-        return {
-            statusCode: 200,
-            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-            body: geminiResponse.body,
-            isBase64Encoded: false
-        };
+        // Netlify 스트리밍 응답을 위해서는 `new Response()` 객체를 반환해야 합니다.
+        return new Response(geminiResponse.body, {
+            status: 200,
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+        });
 
     } catch (error) {
         console.error("Server function error:", error);
