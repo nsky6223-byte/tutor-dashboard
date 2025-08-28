@@ -205,20 +205,47 @@
                         if (response.status === 404) {
                             throw new Error('API 엔드포인트를 찾을 수 없습니다 (404). Netlify 함수 배포 설정을 확인해주세요.');
                         }
-                        // 404가 아닌 다른 오류일 경우, 서버에서 보낸 에러 메시지를 파싱 시도
                         const errorResult = await response.json().catch(() => ({ error: `서버 응답 오류: ${response.status}` }));
                         throw new Error(errorResult.error || `서버 응답 오류: ${response.status}`);
                     }
 
-                    const result = await response.json();
-                    
-                    const candidate = result.candidates?.[0];
-                    if (candidate && candidate.content?.parts?.[0]?.text) {
-                        const text = candidate.content.parts[0].text;
-                        const htmlContent = marked.parse(text);
-                        resultArea.innerHTML = `<div class="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3 text-gray-800 leading-relaxed prose">${htmlContent}</div>`;
-                    } else {
-                        throw new Error("API 응답에서 유효한 텍스트를 찾을 수 없습니다."); 
+                    // 스트리밍 응답을 실시간으로 처리
+                    resultArea.innerHTML = `<div class="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3 text-gray-800 leading-relaxed prose"></div>`;
+                    const contentArea = resultArea.querySelector('.prose');
+
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+                    let fullText = '';
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) {
+                            break;
+                        }
+                        
+                        buffer += decoder.decode(value, { stream: true });
+                        
+                        // Gemini 스트림은 JSON 객체들이 연속적으로 오는 형태이므로, 개행을 기준으로 분리 시도
+                        const parts = buffer.split('\n');
+                        
+                        // 마지막 부분을 제외하고 처리 (불완전한 JSON일 수 있으므로)
+                        buffer = parts.pop() || ''; 
+
+                        for (const part of parts) {
+                            if (part.trim() === '') continue;
+                            try {
+                                // Gemini API는 JSON 배열을 스트리밍함
+                                const parsed = JSON.parse(part);
+                                const textPart = parsed[0]?.candidates?.[0]?.content?.parts?.[0]?.text;
+                                if (textPart) {
+                                    fullText += textPart;
+                                    contentArea.innerHTML = marked.parse(fullText);
+                                }
+                            } catch (e) {
+                                console.warn("스트림 파싱 중 오류 (무시될 수 있음):", e);
+                            }
+                        }
                     }
                 } catch (error) {
                     console.error("Gemini API 호출 중 오류 발생:", error);
