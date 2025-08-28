@@ -46,7 +46,7 @@ exports.handler = async function (event) {
             };
         }
         
-        // Netlify 스트리밍 응답을 위해서는 `new Response()` 객체를 반환해야 합니다.
+        // To enable streaming, a standard `Response` object must be returned.
         return new Response(geminiResponse.body, {
             status: 200,
             headers: { 'Content-Type': 'text/plain; charset=utf-8' }
