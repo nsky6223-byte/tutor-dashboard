@@ -236,43 +236,14 @@
                         throw new Error(errorResult.error || `서버 응답 오류: ${response.status}`);
                     }
 
-                    // 스트리밍 응답을 실시간으로 처리
-                    resultArea.innerHTML = `<div class="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3 text-gray-800 leading-relaxed prose"></div>`;
-                    const contentArea = resultArea.querySelector('.prose');
-
-                    const reader = response.body.getReader();
-                    const decoder = new TextDecoder();
-                    let buffer = '';
-                    let fullText = '';
-
-                    while (true) {
-                        const { done, value } = await reader.read();
-                        if (done) {
-                            break;
-                        }
-                        
-                        buffer += decoder.decode(value, { stream: true });
-                        
-                        // Gemini 스트림은 JSON 객체들이 연속적으로 오는 형태이므로, 개행을 기준으로 분리 시도
-                        const parts = buffer.split('\n');
-                        
-                        // 마지막 부분을 제외하고 처리 (불완전한 JSON일 수 있으므로)
-                        buffer = parts.pop() || ''; 
-
-                        for (const part of parts) {
-                            if (part.trim() === '') continue;
-                            try {
-                                // 스트림은 JSON 객체를 반환 (배열이 아님)
-                                const parsed = JSON.parse(part);
-                                const textPart = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
-                                if (textPart) {
-                                    fullText += textPart;
-                                    contentArea.innerHTML = marked.parse(fullText);
-                                }
-                            } catch (e) {
-                                console.warn("스트림 파싱 중 오류 (무시될 수 있음):", part, e);
-                            }
-                        }
+                    // JSON 응답 처리
+                    const result = await response.json();
+                    
+                    if (result.success && result.content) {
+                        // 마크다운으로 파싱하여 표시
+                        resultArea.innerHTML = `<div class="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3 text-gray-800 leading-relaxed prose">${marked.parse(result.content)}</div>`;
+                    } else {
+                        throw new Error(result.error || 'AI 응답을 처리할 수 없습니다.');
                     }
                 } catch (error) {
                     console.error("Gemini API 호출 중 오류 발생:", error);

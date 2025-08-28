@@ -34,8 +34,8 @@ exports.handler = async function (event) {
             return { statusCode: 400, body: JSON.stringify({ error: "이미지 데이터가 전송되지 않았습니다." }) };
         }
 
-       // 10초 타임아웃 문제를 해결하기 위해 스트리밍 엔드포인트 사용
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:streamGenerateContent?key=${apiKey}`;
+        // 일반 엔드포인트 사용 (스트리밍 대신)
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
         const systemPrompt = `너는 수학 문제 풀이 전문가야. 이미지 속 문제를 읽고, 다음 마크다운 형식에 맞춰서 답변해 줘:\n\n**문제 번호:** (문제 번호)\n\n**문제 분석:** (어떤 단원의 어떤 개념을 사용하는지, 핵심 조건은 무엇인지 요약)\n\n**풀이 과정:** (단계별로 상세하고 논리적인 풀이 과정을 서술)\n\n**정답:** (최종 정답)\n\n**추가 코멘트:** (유사 문제 유형, 학생들이 자주 하는 실수, 추가적으로 학습하면 좋은 개념 등을 제안)`;
         
         const payload = {
@@ -47,7 +47,7 @@ exports.handler = async function (event) {
             }]
         };
 
-         const geminiResponse = await fetch(apiUrl, {
+        const geminiResponse = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -63,15 +63,29 @@ exports.handler = async function (event) {
             };
         }
         
-       // Gemini API의 응답 스트림을 클라이언트로 바로 전달
+        // Gemini API 응답을 JSON으로 파싱
+        const geminiData = await geminiResponse.json();
+        const textContent = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        if (!textContent) {
+            return {
+                statusCode: 500,
+                body: JSON.stringify({ error: "AI 응답을 처리할 수 없습니다." })
+            };
+        }
+
+        // 성공 응답
         return {
             statusCode: 200,
             headers: { 
-                'Content-Type': 'text/plain; charset=utf-8',
+                'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Headers': 'Content-Type'
             },
-            body: geminiResponse.body
+            body: JSON.stringify({ 
+                success: true, 
+                content: textContent 
+            })
         };
 
     } catch (error) {
