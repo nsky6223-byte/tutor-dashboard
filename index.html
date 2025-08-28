@@ -192,7 +192,7 @@
             }
 
             function resizeImage(base64Str, callback) {
-                const MAX_DIMENSION = 1024; // 이미지의 최대 가로/세로 크기
+                const MAX_DIMENSION = 800; // 이미지 최대 크기를 줄여 AI 분석 속도 향상
                 const img = new Image();
                 img.src = base64Str;
                 img.onload = () => {
@@ -207,8 +207,8 @@
                     canvas.height = height;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
-                    // PNG보다 용량이 작은 JPEG로 변환하여 전송 속도 향상
-                    callback(canvas.toDataURL('image/jpeg', 0.9));
+                    // PNG보다 용량이 작은 JPEG로 변환하고 압축률을 높여 전송 속도 향상
+                    callback(canvas.toDataURL('image/jpeg', 0.85));
                 };
             }
 
@@ -232,18 +232,43 @@
                         if (response.status === 404) {
                             throw new Error('API 엔드포인트를 찾을 수 없습니다 (404). Netlify 함수 배포 설정을 확인해주세요.');
                         }
+                        if (response.status === 504) {
+                            throw new Error('서버 처리 시간 초과(504). 이미지가 너무 복잡하거나 클 수 있습니다.');
+                        }
                         const errorResult = await response.json().catch(() => ({ error: `서버 응답 오류: ${response.status}` }));
                         throw new Error(errorResult.error || `서버 응답 오류: ${response.status}`);
                     }
 
-                    // JSON 응답 처리
-                    const result = await response.json();
-                    
-                    if (result.success && result.content) {
-                        // 마크다운으로 파싱하여 표시
-                        resultArea.innerHTML = `<div class="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3 text-gray-800 leading-relaxed prose">${marked.parse(result.content)}</div>`;
-                    } else {
-                        throw new Error(result.error || 'AI 응답을 처리할 수 없습니다.');
+                    // 스트리밍 응답을 실시간으로 처리
+                    resultArea.innerHTML = `<div class="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3 text-gray-800 leading-relaxed prose"></div>`;
+                    const contentArea = resultArea.querySelector('.prose');
+
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+                    let fullText = '';
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        
+                        buffer += decoder.decode(value, { stream: true });
+                        
+                        // Gemini 스트림은 `\n`으로 구분된 JSON 덩어리들로 구성됨
+                        const parts = buffer.split('\n');
+                        buffer = parts.pop() || ''; // 마지막 불완전한 조각은 다음 루프를 위해 남겨둠
+
+                        for (const part of parts) {
+                            if (part.trim() === '') continue;
+                            try {
+                                const parsed = JSON.parse(part);
+                                const textPart = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+                                if (textPart) {
+                                    fullText += textPart;
+                                    contentArea.innerHTML = marked.parse(fullText);
+                                }
+                            } catch (e) { /* 불완전한 JSON 조각은 무시 */ }
+                        }
                     }
                 } catch (error) {
                     console.error("Gemini API 호출 중 오류 발생:", error);

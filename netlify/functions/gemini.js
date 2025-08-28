@@ -1,48 +1,32 @@
 // netlify/functions/gemini.js
+
+// Netlify는 기본적으로 fetch를 지원하므로 별도 import가 필요 없습니다.
+
 exports.handler = async function (event) {
-    // CORS preflight 요청 처리
-    if (event.httpMethod === 'OPTIONS') {
-        return {
-            statusCode: 200,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
-            },
-            body: ''
-        };
-    }
-    
-    // POST 요청만 허용
     if (event.httpMethod !== 'POST') {
-         return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
+        return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
     }
 
     try {
         const { base64ImageData } = JSON.parse(event.body);
-        // Netlify 환경 변수에서 API 키를 가져옴
         const apiKey = process.env.GEMINI_API_KEY;
 
         if (!apiKey) {
-            console.error("GEMINI_API_KEY is not set in Netlify environment variables.");
-            return {
-                statusCode: 500,
-                body: JSON.stringify({ error: "서버 설정에 오류가 있습니다. 관리자에게 문의하세요." })
-            };
+            return { statusCode: 500, body: JSON.stringify({ error: "서버 설정에 오류가 있습니다. 관리자에게 문의하세요." }) };
         }
         if (!base64ImageData) {
             return { statusCode: 400, body: JSON.stringify({ error: "이미지 데이터가 전송되지 않았습니다." }) };
         }
 
-        // 일반 엔드포인트 사용 (스트리밍 대신)
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+        // 10초 타임아웃 문제를 해결하기 위해 스트리밍 엔드포인트 사용
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:streamGenerateContent?key=${apiKey}`;
         const systemPrompt = `너는 수학 문제 풀이 전문가야. 이미지 속 문제를 읽고, 다음 마크다운 형식에 맞춰서 답변해 줘:\n\n**문제 번호:** (문제 번호)\n\n**문제 분석:** (어떤 단원의 어떤 개념을 사용하는지, 핵심 조건은 무엇인지 요약)\n\n**풀이 과정:** (단계별로 상세하고 논리적인 풀이 과정을 서술)\n\n**정답:** (최종 정답)\n\n**추가 코멘트:** (유사 문제 유형, 학생들이 자주 하는 실수, 추가적으로 학습하면 좋은 개념 등을 제안)`;
         
         const payload = {
             contents: [{
                 parts: [
                     { text: systemPrompt },
-                    { inlineData: { mimeType: "image/jpeg", data: base64ImageData } }
+                    { inline_data: { mime_type: "image/jpeg", data: base64ImageData } }
                 ]
             }]
         };
@@ -53,7 +37,6 @@ exports.handler = async function (event) {
             body: JSON.stringify(payload)
         });
 
-        // Gemini API 요청 자체에 실패했는지 확인
         if (!geminiResponse.ok) {
             const errorText = await geminiResponse.text();
             console.error("Gemini API Error:", errorText);
@@ -63,29 +46,12 @@ exports.handler = async function (event) {
             };
         }
         
-        // Gemini API 응답을 JSON으로 파싱
-        const geminiData = await geminiResponse.json();
-        const textContent = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
-        
-        if (!textContent) {
-            return {
-                statusCode: 500,
-                body: JSON.stringify({ error: "AI 응답을 처리할 수 없습니다." })
-            };
-        }
-
-        // 성공 응답
+        // Netlify Functions는 Response 객체를 반환하여 스트리밍을 지원합니다.
         return {
             statusCode: 200,
-            headers: { 
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type'
-            },
-            body: JSON.stringify({ 
-                success: true, 
-                content: textContent 
-            })
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+            body: geminiResponse.body,
+            isBase64Encoded: false
         };
 
     } catch (error) {
