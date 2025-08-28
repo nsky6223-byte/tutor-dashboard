@@ -222,7 +222,11 @@
                 const payload = { base64ImageData };
 
                 try {
-                    const response = await fetch(functionUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    const response = await fetch(functionUrl, { 
+                        method: 'POST', 
+                        headers: { 'Content-Type': 'application/json' }, 
+                        body: JSON.stringify(payload) 
+                    });
                     
                     if (!response.ok) {
                         if (response.status === 404) {

@@ -1,5 +1,18 @@
 // netlify/functions/gemini.js
 exports.handler = async function (event) {
+    // CORS preflight 요청 처리
+    if (event.httpMethod === 'OPTIONS') {
+        return {
+            statusCode: 200,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
+            },
+            body: ''
+        };
+    }
+    
     // POST 요청만 허용
     if (event.httpMethod !== 'POST') {
          return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
@@ -29,7 +42,7 @@ exports.handler = async function (event) {
             contents: [{
                 parts: [
                     { text: systemPrompt },
-                    { inlineData: { mimeType: "image/png", data: base64ImageData } }
+                    { inlineData: { mimeType: "image/jpeg", data: base64ImageData } }
                 ]
             }]
         };
@@ -39,8 +52,6 @@ exports.handler = async function (event) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-
-        const result = await response.json();
 
         // Gemini API 요청 자체에 실패했는지 확인
         if (!geminiResponse.ok) {
@@ -53,10 +64,15 @@ exports.handler = async function (event) {
         }
         
        // Gemini API의 응답 스트림을 클라이언트로 바로 전달
-        return new Response(geminiResponse.body, {
-            status: 200,
-            headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-        });
+        return {
+            statusCode: 200,
+            headers: { 
+                'Content-Type': 'text/plain; charset=utf-8',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type'
+            },
+            body: geminiResponse.body
+        };
 
     } catch (error) {
         console.error("Server function error:", error);
